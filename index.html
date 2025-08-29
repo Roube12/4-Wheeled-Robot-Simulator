@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QCSHS Robotics II — 4-Wheeled Robot Simulator</title>
+  <style>
+    :root{
+      --fg:#0b1020;
+      --panel:#0f1730; --panelBorder:#1f2b55;
+      --chassis:#0faa4a;     /* green chassis */
+      --tire:#0a0000;        /* tire color */
+      --rim:#ffd34d;         /* rim stripe */
+      --muted:#9bb0d4;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;background:#0a0f22;color:#e7eefc;
+      font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;
+      display:grid;grid-template-rows:auto 1fr auto;min-height:100vh
+    }
+
+    /* Header */
+    header{
+      padding:14px 18px;border-bottom:1px solid var(--panelBorder);
+      background:linear-gradient(180deg,#0b1230 0%, #0a0f22 100%);
+    }
+    .hdr{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    .hdrLeft{display:flex;align-items:center;gap:12px}
+    .badge{
+      background:#142158;border:1px solid #2a3b77;color:#cfe3ff;
+      font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+      padding:4px 8px;border-radius:999px;
+    }
+    .ttl{display:flex;flex-direction:column}
+    .ttl h1{margin:0;font-size:18px;line-height:1.2}
+    .ttl small{color:var(--muted);font-size:12px}
+    .hdrTools{display:flex;gap:8px;flex-wrap:wrap}
+    .toolBtn{
+      background:#15204a;color:#e7eefc;border:1px solid #2a3b77;border-radius:10px;
+      padding:8px 10px;cursor:pointer;font-size:13px
+    }
+    .toolBtn:hover{background:#1a2a5d}
+
+    main{display:grid;grid-template-columns:340px 1fr;gap:16px;padding:16px}
+    .panel{background:var(--panel);border:1px solid var(--panelBorder);
+           border-radius:16px;padding:16px}
+    .row{display:flex;gap:8px;flex-wrap:wrap}
+    label{display:block;margin-top:12px;margin-bottom:6px;font-size:13px;color:#cfe3ff}
+    button,.select{background:#15204a;color:#e7eefc;border:1px solid #2a3b77;border-radius:12px;padding:10px 12px;cursor:pointer}
+    button:hover{background:#1a2a5d}
+    input[type="range"]{width:100%}
+    .monitors{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:12px}
+    .monitor{background:#111b3a;border:1px solid #223066;border-radius:12px;padding:10px}
+    .monitor h3{margin:0 0 6px 0;font-size:12px;color:#9bb0d4;letter-spacing:.08em;text-transform:uppercase}
+    .reading{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;font-size:14px}
+    .reading span{display:block;margin:4px 0}
+
+    /* White field */
+    canvas{
+      width:100%;height:100%;display:block;
+      background:#ffffff; /* plain white field */
+      border:1px solid var(--panelBorder);
+      border-radius:16px
+    }
+
+    footer{padding:8px 16px;text-align:center;color:#9bb0d4;font-size:12px;border-top:1px solid var(--panelBorder)}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="hdr">
+      <div class="hdrLeft">
+        <span class="badge">QCSHS • Robotics II</span>
+        <div class="ttl">
+          <h1>Interactive Wheeled Robot Motion Simulator</h1>
+          <small>Grade 10 • Differential drive • Boundary & per-wheel speed</small>
+        </div>
+      </div>
+      <div class="hdrTools">
+        <button class="toolBtn" id="centerRobot" title="Center the robot">Center Robot</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel">
+      <div class="row">
+        <button id="playPause">▶ Play</button>
+        <button id="reset">↺ Reset</button>
+      </div>
+
+      <label for="mode">Motion Mode</label>
+      <select id="mode" class="select">
+        <option value="forward">Forward</option>
+        <option value="backward">Backward</option>
+        <option value="turnLeft">Turn Left (arc)</option>
+        <option value="turnRight">Turn Right (arc)</option>
+        <option value="spinLeft">Spin in Place (left)</option>
+        <option value="spinRight">Spin in Place (right)</option>
+      </select>
+
+      <label for="speed">Speed</label>
+      <input id="speed" type="range" min="0" max="260" value="140" />
+
+      <div class="monitors">
+        <div class="monitor">
+          <h3>Left Side Wheels</h3>
+          <div class="reading">
+            <span>Front-Left: <strong id="fl">0</strong> px/s</span>
+            <span>Rear-Left: <strong id="rl">0</strong> px/s</span>
+          </div>
+        </div>
+        <div class="monitor">
+          <h3>Right Side Wheels</h3>
+          <div class="reading">
+            <span>Front-Right: <strong id="fr">0</strong> px/s</span>
+            <span>Rear-Right: <strong id="rr">0</strong> px/s</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <canvas id="c" width="1100" height="750"></canvas>
+    </section>
+  </main>
+
+  <footer>White field with QCSHS logo centered; thicker wheels, green chassis, boundary walls, and per-wheel speed monitors.</footer>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+// UI
+const modeSel = document.getElementById('mode');
+const speedRange = document.getElementById('speed');
+const playBtn = document.getElementById('playPause');
+const resetBtn = document.getElementById('reset');
+const flEl = document.getElementById('fl');
+const rlEl = document.getElementById('rl');
+const frEl = document.getElementById('fr');
+const rrEl = document.getElementById('rr');
+const centerRobotBtn = document.getElementById('centerRobot');
+
+let playing = false;
+let last = 0;
+
+// Boundary (inner padded rectangle)
+const PAD = 40; // padding from canvas edge
+const bounds = { x: PAD, y: PAD, w: canvas.width-2*PAD, h: canvas.height-2*PAD };
+
+// Robot (top view)
+const robot = {
+  x: canvas.width/2,
+  y: canvas.height/2,
+  angle: -Math.PI/2,
+  L: 170, W: 120,
+  wheelR: 40,       // wheel length along x
+  wheelT: 30,       // wheel thickness (height)
+  axleX: 60, axleY: 75,
+  wheelAngle: 0,
+  leftSpeed: 0, rightSpeed: 0,
+};
+
+// ---------- Helpers ----------
+function roundRect(ctx,x,y,w,h,r,fill,stroke){
+  if(typeof r==='number') r={tl:r,tr:r,br:r,bl:r};
+  ctx.beginPath();
+  ctx.moveTo(x+r.tl,y);
+  ctx.lineTo(x+w-r.tr,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r.tr);
+  ctx.lineTo(x+w,y+h-r.br); ctx.quadraticCurveTo(x+w,y+h,x+w-r.br,y+h);
+  ctx.lineTo(x+r.bl,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r.bl);
+  ctx.lineTo(x,y+r.tl); ctx.quadraticCurveTo(x,y,x+r.tl,y);
+  if(fill) ctx.fill(); if(stroke) ctx.stroke();
+}
+function cssVar(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+function drawWheel(x,y){
+  ctx.save(); ctx.translate(x,y);
+  // tire
+  ctx.fillStyle = cssVar('--tire');
+  roundRect(ctx,-robot.wheelR,-robot.wheelT/2,2*robot.wheelR,robot.wheelT,8,true,false);
+  // rim stripe
+  ctx.fillStyle = cssVar('--rim');
+  roundRect(ctx,-robot.wheelR+6,-robot.wheelT/2+5,2*(robot.wheelR-6),robot.wheelT-10,6,true,false);
+  ctx.restore();
+}
+
+// ---------- White field + centered logo ----------
+const fieldLogo = new Image();
+// Use the exact filename you have beside this HTML file:
+fieldLogo.src = "kisay logo png.png";
+let logoLoaded = false;
+fieldLogo.onload = ()=>{ logoLoaded = true; };
+
+function drawFieldAndBoundary(){
+  // canvas background is already white via CSS
+  // draw centered logo
+  if(logoLoaded){
+    const cx = canvas.width/2;
+    const cy = canvas.height/2;
+
+    // Choose a size that fits inside the boundary nicely:
+    const size = Math.min(bounds.w, bounds.h) * 0.6; // 60% of inner field
+    ctx.save();
+    ctx.globalAlpha = 1.0;                // full color as requested
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(fieldLogo, cx - size/2, cy - size/2, size, size);
+    ctx.restore();
+  }
+
+  // boundary walls
+  ctx.save();
+  ctx.strokeStyle = '#ff6b6b';
+  ctx.lineWidth = 3;
+  roundRect(ctx, bounds.x, bounds.y, bounds.w, bounds.h, 16, false, true);
+  ctx.restore();
+}
+
+// ---------- Robot drawing ----------
+function drawRobot(){
+  ctx.save();
+  ctx.translate(robot.x, robot.y);
+  ctx.rotate(robot.angle);
+
+  // chassis (green)
+  ctx.fillStyle = cssVar('--chassis');
+  roundRect(ctx,-robot.L/2,-robot.W/2,robot.L,robot.W,14,true,false);
+
+  // wheels (4 corners)
+  drawWheel(-robot.axleX,-robot.axleY);
+  drawWheel( robot.axleX,-robot.axleY);
+  drawWheel(-robot.axleX, robot.axleY);
+  drawWheel( robot.axleX, robot.axleY);
+
+  ctx.restore();
+}
+
+
+// ---------- Physics / update ----------
+function update(dt){
+  const base = +speedRange.value;
+  let l = base, r = base;
+  const mode = modeSel.value;
+  if(mode==='backward'){ l=-base; r=-base; }
+  else if(mode==='turnLeft'){ l=base*0.60; r=base*1.15; }
+  else if(mode==='turnRight'){ l=base*1.15; r=base*0.60; }
+  else if(mode==='spinLeft'){ l=-base; r= base; }
+  else if(mode==='spinRight'){ l= base; r=-base; }
+
+  robot.leftSpeed = l; robot.rightSpeed = r;
+  const v = (l+r)/2;
+  const omega = (r-l)/(robot.W); // differential drive approx
+
+  // Predict next pose
+  const nx = robot.x + v * Math.cos(robot.angle) * dt;
+  const ny = robot.y + v * Math.sin(robot.angle) * dt;
+  const na = robot.angle + omega * dt;
+
+  // Keep robot rectangle within boundary (simple clamp + bounce)
+  const halfL = robot.L/2 + 6;
+  const halfW = robot.W/2 + 6;
+
+  let bounced = false;
+  if(nx - halfL < bounds.x){ robot.x = bounds.x + halfL; bounced=true; }
+  else if(nx + halfL > bounds.x + bounds.w){ robot.x = bounds.x + bounds.w - halfL; bounced=true; }
+  else { robot.x = nx; }
+
+  if(ny - halfW < bounds.y){ robot.y = bounds.y + halfW; bounced=true; }
+  else if(ny + halfW > bounds.y + bounds.h){ robot.y = bounds.y + bounds.h - halfW; bounced=true; }
+  else { robot.y = ny; }
+
+  robot.angle = na;
+
+  // Bounce by reversing direction briefly when colliding
+  if(bounced){
+    robot.leftSpeed = -robot.leftSpeed * 0.9;
+    robot.rightSpeed = -robot.rightSpeed * 0.9;
+    robot.angle += Math.PI/2 * (Math.random() > 0.5 ? 1 : -1);
+  }
+
+  // update visual wheel rotation (not used visually here but kept)
+  robot.wheelAngle = (robot.wheelAngle || 0) + v * dt * 0.6;
+}
+
+// ---------- Render loop ----------
+function render(ts){
+  if(!playing){ last = ts; requestAnimationFrame(render); return; }
+  const dt = Math.min(0.05, (ts - last)/1000); last = ts;
+
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  drawFieldAndBoundary();
+  update(dt);
+  drawRobot();
+
+  // monitors
+  const l = robot.leftSpeed, r = robot.rightSpeed;
+  flEl.textContent = l.toFixed(0);
+  rlEl.textContent = l.toFixed(0);
+  frEl.textContent = r.toFixed(0);
+  rrEl.textContent = r.toFixed(0);
+
+  requestAnimationFrame(render);
+}
+
+// ---------- UI ----------
+playBtn.addEventListener('click', ()=>{
+  playing = !playing;
+  playBtn.textContent = playing ? '⏸ Pause' : '▶ Play';
+});
+function centerRobotPose(){
+  robot.x = canvas.width/2;
+  robot.y = canvas.height/2;
+  robot.angle = -Math.PI/2;
+}
+resetBtn.addEventListener('click', ()=>{
+  centerRobotPose();
+  robot.leftSpeed = 0; robot.rightSpeed = 0;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  drawFieldAndBoundary(); drawRobot();
+  flEl.textContent = rlEl.textContent = frEl.textContent = rrEl.textContent = '0';
+});
+centerRobotBtn.addEventListener('click', centerRobotPose);
+
+// ---------- Initial paint ----------
+drawFieldAndBoundary(); drawRobot();
+requestAnimationFrame((t)=>{ last = t; requestAnimationFrame(render); });
+</script>
+</body>
+</html>
