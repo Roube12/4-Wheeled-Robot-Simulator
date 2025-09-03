@@ -154,7 +154,7 @@ const bounds = { x: PAD, y: PAD, w: canvas.width-2*PAD, h: canvas.height-2*PAD }
 const robot = {
   x: canvas.width/2,
   y: canvas.height/2,
-  angle: -Math.PI/2,
+  angle: -Math.PI/2, // facing up
   L: 170, W: 120,
   wheelR: 40,       // wheel length along x
   wheelT: 30,       // wheel thickness (height)
@@ -189,22 +189,18 @@ function drawWheel(x,y){
 
 // ---------- White field + centered logo ----------
 const fieldLogo = new Image();
-// Use the exact filename you have beside this HTML file:
-fieldLogo.src = "kisay logo png.png";
+fieldLogo.src = "kisay logo png.png"; // ensure this filename exists next to the HTML
 let logoLoaded = false;
 fieldLogo.onload = ()=>{ logoLoaded = true; };
 
 function drawFieldAndBoundary(){
-  // canvas background is already white via CSS
-  // draw centered logo
+  // centered logo
   if(logoLoaded){
     const cx = canvas.width/2;
     const cy = canvas.height/2;
-
-    // Choose a size that fits inside the boundary nicely:
     const size = Math.min(bounds.w, bounds.h) * 0.6; // 60% of inner field
     ctx.save();
-    ctx.globalAlpha = 1.0;                // full color as requested
+    ctx.globalAlpha = 1.0;
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(fieldLogo, cx - size/2, cy - size/2, size, size);
     ctx.restore();
@@ -237,21 +233,53 @@ function drawRobot(){
   ctx.restore();
 }
 
+function repaint(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  drawFieldAndBoundary();
+  drawRobot();
+  // update monitors
+  flEl.textContent = robot.leftSpeed.toFixed(0);
+  rlEl.textContent = robot.leftSpeed.toFixed(0);
+  frEl.textContent = robot.rightSpeed.toFixed(0);
+  rrEl.textContent = robot.rightSpeed.toFixed(0);
+}
 
 // ---------- Physics / update ----------
 function update(dt){
   const base = +speedRange.value;
   let l = base, r = base;
   const mode = modeSel.value;
-  if(mode==='backward'){ l=-base; r=-base; }
-  else if(mode==='turnLeft'){ l=base*0.60; r=base*1.15; }
-  else if(mode==='turnRight'){ l=base*1.15; r=base*0.60; }
-  else if(mode==='spinLeft'){ l=-base; r= base; }
-  else if(mode==='spinRight'){ l= base; r=-base; }
 
-  robot.leftSpeed = l; robot.rightSpeed = r;
-  const v = (l+r)/2;
-  const omega = (r-l)/(robot.W); // differential drive approx
+  if(mode==='backward'){
+    l = -base; r = -base;
+  }
+  else if(mode==='turnLeft'){
+    // Right wheels faster than left (your requirement)
+    l = base * 0.60;
+    r = base * 1.15;
+  }
+  else if(mode==='turnRight'){
+    // Left wheels faster than right
+    l = base * 1.15;
+    r = base * 0.60;
+  }
+  else if(mode==='spinLeft'){
+    // Left turn (counter-clockwise): left backward, right forward
+    l = -base;
+    r =  base;
+  }
+  else if(mode==='spinRight'){
+    // Right turn (clockwise): left forward, right backward
+    l =  base;
+    r = -base;
+  }
+
+  robot.leftSpeed  = l;
+  robot.rightSpeed = r;
+
+  const v = (l + r) / 2;
+  // IMPORTANT: use (l - r) so that r > l produces a LEFT turn (CCW) on screen
+  const omega = (l - r) / (robot.W);
 
   // Predict next pose
   const nx = robot.x + v * Math.cos(robot.angle) * dt;
@@ -273,15 +301,11 @@ function update(dt){
 
   robot.angle = na;
 
-  // Bounce by reversing direction briefly when colliding
   if(bounced){
     robot.leftSpeed = -robot.leftSpeed * 0.9;
     robot.rightSpeed = -robot.rightSpeed * 0.9;
     robot.angle += Math.PI/2 * (Math.random() > 0.5 ? 1 : -1);
   }
-
-  // update visual wheel rotation (not used visually here but kept)
-  robot.wheelAngle = (robot.wheelAngle || 0) + v * dt * 0.6;
 }
 
 // ---------- Render loop ----------
@@ -290,17 +314,15 @@ function render(ts){
   const dt = Math.min(0.05, (ts - last)/1000); last = ts;
 
   ctx.clearRect(0,0,canvas.width,canvas.height);
-
   drawFieldAndBoundary();
   update(dt);
   drawRobot();
 
   // monitors
-  const l = robot.leftSpeed, r = robot.rightSpeed;
-  flEl.textContent = l.toFixed(0);
-  rlEl.textContent = l.toFixed(0);
-  frEl.textContent = r.toFixed(0);
-  rrEl.textContent = r.toFixed(0);
+  flEl.textContent = robot.leftSpeed.toFixed(0);
+  rlEl.textContent = robot.leftSpeed.toFixed(0);
+  frEl.textContent = robot.rightSpeed.toFixed(0);
+  rrEl.textContent = robot.rightSpeed.toFixed(0);
 
   requestAnimationFrame(render);
 }
@@ -310,22 +332,26 @@ playBtn.addEventListener('click', ()=>{
   playing = !playing;
   playBtn.textContent = playing ? '⏸ Pause' : '▶ Play';
 });
+
 function centerRobotPose(){
   robot.x = canvas.width/2;
   robot.y = canvas.height/2;
   robot.angle = -Math.PI/2;
 }
+
 resetBtn.addEventListener('click', ()=>{
   centerRobotPose();
   robot.leftSpeed = 0; robot.rightSpeed = 0;
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  drawFieldAndBoundary(); drawRobot();
-  flEl.textContent = rlEl.textContent = frEl.textContent = rrEl.textContent = '0';
+  repaint();
 });
-centerRobotBtn.addEventListener('click', centerRobotPose);
+
+centerRobotBtn.addEventListener('click', ()=>{
+  centerRobotPose();
+  repaint();
+});
 
 // ---------- Initial paint ----------
-drawFieldAndBoundary(); drawRobot();
+repaint();
 requestAnimationFrame((t)=>{ last = t; requestAnimationFrame(render); });
 </script>
 </body>
